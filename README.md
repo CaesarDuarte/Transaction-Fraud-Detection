@@ -1,20 +1,20 @@
-# Transaction Fraud Detection System
+# Transaction Fraud Detection
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
 ![Status](https://img.shields.io/badge/Status-In%20Progress-yellow)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Dataset](https://img.shields.io/badge/Dataset-IEEE--CIS%20Fraud%20Detection-orange?logo=kaggle)
 
-> An end-to-end Machine Learning Engineering project for real-time transaction fraud detection (covering data engineering, feature engineering, model training, serving via REST API, and data drift monitoring)
+> A Machine Learning project focused on building a simple and reliable pipeline for fraud detection using the IEEE-CIS dataset
 
-> (PT) Um projeto completo de Engenharia de Aprendizado de Máquina para detecção de fraudes em transações em tempo real (abrangendo engenharia de dados, engenharia de recursos, treinamento de modelos, disponibilização via API REST e monitoramento de desvios de dados).
+> (PT) Projeto de Machine Learning focado na construção de um pipeline simples e confiável para detecção de fraudes.
 ---
 
 ## Table of Contents
 
 - [Problem Statement](#problem-statement)
 - [Solution Overview](#solution-overview)
-- [Architecture](#architecture)
+- [Pipeline](#pipeline)
 - [Dataset](#dataset)
 - [Project Structure](#project-structure)
 - [Quickstart](#quickstart)
@@ -27,61 +27,37 @@
 
 ## Problem Statement
 
-Financial fraud costs the global economy hundreds of billions of dollars annually. Traditional rule-based systems suffer from high false-positive rates, harming customer experience, and low recall on novel fraud patterns.
+Financial fraud costs the global economy billions of dollars annually. Traditional rule-based systems often struggle with high false-positive rates and limited ability to detect new fraud patterns.
 
-This project builds a **supervised binary classification system** capable of flagging fraudulent transactions in near-real-time. The core challenges addressed are:
+This project focuses on building a **supervised binary classification pipeline** to identify potentially fraudulent transactions using the IEEE-CIS dataset.
 
-- **Severe class imbalance** (~3.5% fraud rate in the IEEE-CIS dataset)
-- **High dimensionality** (400+ raw features across transaction and identity tables)
-- **Temporal leakage risk** during feature engineering and model evaluation
-- **Production serving** with low-latency inference and schema validation
+The main challenges explored include:
+
+- **Severe class imbalance** (~3.5% fraud rate)
+- **High dimensionality** (400+ features across transaction and identity data)
+- **Handling missing data**, which is significant in this dataset
+- **Basic temporal considerations** during feature engineering
 
 ---
 
 ## Solution Overview
 
 ```
-Raw transaction data -> Data validation -> Feature engineering pipeline
--> XGBoost/LightGBM classifier -> FastAPI inference endpoint
--> Evidently drift monitoring -> GitHub Actions CI
+Raw data -> Data validation -> EDA -> Feature engineering -> Model training
+
 ```
 
-The model is optimized for **PR-AUC** (Precision-Recall Area Under Curve) rather than accuracy, which is the correct metric for imbalanced fraud detection. Threshold tuning is applied post-training to balance precision and recall for the business use case.
+The goal is to understand the dataset, create useful features, and train a baseline model for fraud detection.
 
 ---
 
-## Architecture
+## Pipeline
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Data Layer                           │
-│  IEEE-CIS raw CSVs -> processed / curated                   |                 
-└────────────────────────────┬────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────┐
-│                    Processing Layer                         │
-│  Great Expectations validation -> pandas / polars pipeline  │
-│  Missing value imputation -> encoding -> temporal features  │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────┐
-│                     Modeling Layer                          │
-│  XGBoost + LightGBM -> MLflow experiment tracking           │
-│  SMOTE / class_weight -> threshold tuning -> SHAP explainer │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────┐
-│                      Serving Layer                          │
-│  FastAPI -> Pydantic schema validation -> Docker container  │
-│  POST /predict  ->  { transaction_id, fraud_probability,    │
-│                      is_fraud, model_version }              │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────┐
-│                   Monitoring Layer                          │
-│  Evidently data drift reports -> pytest -> GitHub Actions   │
-└─────────────────────────────────────────────────────────────┘
-```
+- Load and merge transaction and identity data
+- Validate dataset quality
+- Perform exploratory data analysis (EDA)
+- Apply basic feature engineering
+- Train and evaluate a baseline model
 
 ---
 
@@ -121,34 +97,12 @@ transaction-fraud-detection-system/
 ├── src/
 │   ├── ingestion/
 │   │   ├── loader.py         # Load and merge transaction + identity tables
-│   │   └── validation.py     # Great Expectations data contracts
+│   │   └── validation.py     # Basic data validation checks
 │   ├── features/
-│   │   ├── pipeline.py       # sklearn Pipeline for feature engineering
-│   │   ├── temporal.py       # Velocity features, time-window aggregations
-│   │   └── encoding.py       # Target encoding, frequency encoding
-│   ├── models/
-│   │   ├── train.py          # Training script with MLflow logging
-│   │   ├── evaluate.py       # PR-AUC, F1, confusion matrix, SHAP
-│   │   └── threshold.py      # Threshold optimization
-│   └── serving/
-│       ├── app.py            # FastAPI application
-│       ├── schemas.py        # Pydantic input/output models
-│       └── predictor.py      # Model loading and inference
+│   │   └── pipeline.py       # sklearn Pipeline for feature engineering
+│   └── models/
+│       └── train.py          # Model training and evaluation
 │
-├── tests/
-│   ├── test_features.py
-│   ├── test_serving.py
-│   └── test_validation.py
-│
-├── monitoring/
-│   └── drift_report.py       # Evidently drift detection
-│
-├── .github/
-│   └── workflows/
-│       └── ci.yml            # Lint + test on push
-│
-├── Dockerfile
-├── docker-compose.yml
 ├── pyproject.toml
 ├── .gitignore
 └── README.md
@@ -162,14 +116,13 @@ transaction-fraud-detection-system/
 
 - Python 3.11+
 - [conda](https://docs.conda.io/) or `venv`
-- Docker (for serving)
-- Kaggle account (for dataset download)
+- Kaggle account (for dataset download) or manual download
 
 ### 1. Clone and set up environment
 
 ```bash
-git clone https://github.com/CaesarDuarte/Transaction-Fraud-Detection-System.git
-cd Transaction-Fraud-Detection-System
+git clone https://github.com/CaesarDuarte/Transaction-Fraud-Detection.git
+cd Transaction-Fraud-Detection
 
 conda create -n fraud-detection python=3.11
 conda activate fraud-detection
@@ -178,7 +131,7 @@ pip install -e ".[dev]"
 ```
  ⚠️ Important dependency
 
-This project uses Parquet for efficient storage. The above procedure should perform the installation as needed, but ensure you have Pyarrow installed.
+This project uses Parquet for efficient storage. Ensure that pyarrow is installed, as it is required for Parquet support.
 ### 2. Download the dataset
 
 ```bash
@@ -202,20 +155,6 @@ python src/features/pipeline.py
 
 ```bash
 python src/models/train.py
-# MLflow UI: mlflow ui --port 5000
-```
-
-### 5. Serve the model
-
-```bash
-docker compose up --build
-# API docs: http://localhost:8000/docs
-```
-
-### 6. Run tests
-
-```bash
-pytest tests/ -v
 ```
 
 ---
@@ -224,11 +163,12 @@ pytest tests/ -v
 
 | Phase | Description | Status |
 |---|---|---|
-| 1 | Data Engineering (validation, ingestion) | 🟨 In Progress |
-| 2 | EDA + Feature Engineering | 🟥 Not started |
-| 3 | Modeling + Experiment Tracking (MLflow) | 🟥 Not started |
-| 4 | Serving (FastAPI + Docker) | 🟥 Not started |
-| 5 | Monitoring + CI/CD (Evidently + GitHub Actions) | 🟥 Not started |
+| 1 | Data Ingestion | 🟩 Finished |
+| 2 | Data Validation| 🟩 Finished |
+| 3 | EDA  | 🟨 In Progress |
+| 4 | Feature Engineering | 🟥 Not started |
+| 5 | Modeling | 🟥 Not started |
+
 
 ---
 
@@ -236,12 +176,11 @@ pytest tests/ -v
 
 > *To be updated as the project progresses.*
 
-| Metric | Baseline (Logistic Regression) | Best Model |
-|---|---|---|
-| PR-AUC | — | — |
-| F1-Score (fraud class) | — | — |
-| Recall @ 80% Precision | — | — |
-| Inference latency (p99) | — | — |
+| Metric | Baseline Model |
+|---|---|
+| PR-AUC | — |
+| F1-Score (fraud class) | — |
+| Recall | — |
 
 ---
 
@@ -250,19 +189,16 @@ pytest tests/ -v
 | Layer | Tools |
 |---|---|
 | Data validation | Great Expectations |
-| Data processing | pandas, polars |
-| Feature engineering | scikit-learn Pipelines |
+| Data processing | numpy, pandas, polars |
+| Data visualization | matplotlib, seaborn |
+| Feature engineering | scikit-learn |
 | Modeling | XGBoost, LightGBM |
-| Imbalance handling | imbalanced-learn (SMOTE) |
-| Explainability | SHAP |
-| Experiment tracking | MLflow |
-| Serving | FastAPI, Pydantic, Uvicorn |
-| Containerization | Docker, Docker Compose |
-| Monitoring | Evidently |
-| Testing | pytest |
-| CI/CD | GitHub Actions |
 
 ---
+
+## Notes
+
+This project initially aimed to include a full production pipeline (API, monitoring, CI/CD), but the scope was reduced to focus on building a solid foundation in data understanding and modeling.
 
 ## License
 
