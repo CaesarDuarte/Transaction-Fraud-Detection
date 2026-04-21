@@ -7,6 +7,7 @@
 
 > An end-to-end Machine Learning Engineering project for real-time transaction fraud detection (covering data engineering, feature engineering, model training, serving via REST API, and data drift monitoring)
 
+> (PT) Um projeto completo de Engenharia de Aprendizado de Máquina para detecção de fraudes em transações em tempo real (abrangendo engenharia de dados, engenharia de recursos, treinamento de modelos, disponibilização via API REST e monitoramento de desvios de dados).
 ---
 
 ## Table of Contents
@@ -175,7 +176,9 @@ conda activate fraud-detection
 
 pip install -e ".[dev]"
 ```
+ ⚠️ Important dependency
 
+This project uses Parquet for efficient storage. The above procedure should perform the installation as needed, but ensure you have Pyarrow installed.
 ### 2. Download the dataset
 
 ```bash
@@ -191,6 +194,7 @@ unzip data/raw/ieee-fraud-detection.zip -d data/raw/
 
 ```bash
 python src/ingestion/loader.py
+python src/ingestion/validation.py
 python src/features/pipeline.py
 ```
 
@@ -220,11 +224,11 @@ pytest tests/ -v
 
 | Phase | Description | Status |
 |---|---|---|
-| 1 | Data Engineering (validation, ingestion) | 🔲 Not started |
-| 2 | EDA + Feature Engineering | 🔲 Not started |
-| 3 | Modeling + Experiment Tracking (MLflow) | 🔲 Not started |
-| 4 | Serving (FastAPI + Docker) | 🔲 Not started |
-| 5 | Monitoring + CI/CD (Evidently + GitHub Actions) | 🔲 Not started |
+| 1 | Data Engineering (validation, ingestion) | 🟨 In Progress |
+| 2 | EDA + Feature Engineering | 🟥 Not started |
+| 3 | Modeling + Experiment Tracking (MLflow) | 🟥 Not started |
+| 4 | Serving (FastAPI + Docker) | 🟥 Not started |
+| 5 | Monitoring + CI/CD (Evidently + GitHub Actions) | 🟥 Not started |
 
 ---
 
