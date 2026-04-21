@@ -50,6 +50,13 @@ def load_raw(split: str = "train") -> pd.DataFrame:
     df = transactions.merge(identity, on="TransactionID", how="left")
     logger.info("  -> merged shape: %s", df.shape)
 
+    logger.info("Optimizing memory usage ...")
+    before = df.memory_usage(deep=True).sum() / 1e6
+    df = reduce_memory_usage(df)
+    df = convert_object_to_category(df)
+    after = df.memory_usage(deep=True).sum() / 1e6
+    logger.info("  -> memory reduced from %.1f MB to %.1f MB", before, after)
+
     identity_match_rate = transactions["TransactionID"].isin(
         identity["TransactionID"]
     ).mean()
@@ -78,6 +85,41 @@ def describe_dataset(df: pd.DataFrame) -> None:
     print(f"Memory usage:   {df.memory_usage(deep=True).sum() / 1e6:.1f} MB")
     print(f"{'='*50}\n")
 
+def reduce_memory_usage(df: pd.DataFrame) -> pd.DataFrame:
+    """Downcast numeric types to reduce memory usage."""
+    for col in df.columns:
+        col_type = df[col].dtype
+
+        if col_type != "object":
+            c_min = df[col].min()
+            c_max = df[col].max()
+
+            if str(col_type).startswith("int"):
+                if c_min >= 0:
+                    if c_max < 255:
+                        df[col] = df[col].astype("uint8")
+                    elif c_max < 65535:
+                        df[col] = df[col].astype("uint16")
+                    else:
+                        df[col] = df[col].astype("uint32")
+                else:
+                    if c_min > -128 and c_max < 127:
+                        df[col] = df[col].astype("int8")
+                    elif c_min > -32768 and c_max < 32767:
+                        df[col] = df[col].astype("int16")
+                    else:
+                        df[col] = df[col].astype("int32")
+
+            elif str(col_type).startswith("float"):
+                df[col] = df[col].astype("float32")
+
+    return df
+
+def convert_object_to_category(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert object columns to category dtype."""
+    for col in df.select_dtypes(include="str").columns:
+        df[col] = df[col].astype("category")
+    return df
 
 def save_processed(df: pd.DataFrame, split: str = "train") -> Path:
     """
