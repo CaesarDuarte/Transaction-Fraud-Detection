@@ -11,8 +11,10 @@ What this checks:
 
 Run after loader.py:
   python src/ingestion/validation.py
+  python src/ingestion/validation.py --cleanup-raw   # also frees raw CSVs
 """
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -44,10 +46,10 @@ def validate_train(df: pd.DataFrame) -> dict:
     Run all validation checks on the merged training set.
 
     Returns:
-        dict with validation results summary
+        dict with validation results summary.
 
     Raises:
-        ValidationError: on any critical check failure, with details in the message
+        ValidationError: on any critical check failure, with details in the message.
     """
     results = {}
     errors = []
@@ -71,6 +73,9 @@ def validate_train(df: pd.DataFrame) -> dict:
         results["duplicate_transaction_ids"] = n_dupes
         if n_dupes > 0:
             errors.append(f"Found {n_dupes} duplicate TransactionIDs")
+    else:
+        # TransactionID is critical (already caught by check 2, but be explicit)
+        errors.append("Cannot check duplicates: TransactionID column is missing")
 
     # 4. Fraud rate within expected range
     if "isFraud" in df.columns:
@@ -81,6 +86,8 @@ def validate_train(df: pd.DataFrame) -> dict:
                 f"Fraud rate {fraud_rate:.4%} outside expected range "
                 f"[{FRAUD_RATE_MIN:.0%}, {FRAUD_RATE_MAX:.0%}]"
             )
+    else:
+        errors.append("isFraud column is missing (cannot check fraud rate or binary values)")
 
     # 5. No negative TransactionAmt
     if "TransactionAmt" in df.columns:
@@ -89,7 +96,7 @@ def validate_train(df: pd.DataFrame) -> dict:
         if n_negative > 0:
             errors.append(f"Found {n_negative} negative TransactionAmt values")
 
-    # 6. isFraud is strictly binary
+    # 6. isFraud is strictly binary (only run if column exists and fraud rate passed)
     if "isFraud" in df.columns:
         unique_vals = set(df["isFraud"].dropna().unique())
         results["isFraud_unique_values"] = sorted(unique_vals)
@@ -138,6 +145,17 @@ if __name__ == "__main__":
         datefmt="%H:%M:%S",
     )
 
+    parser = argparse.ArgumentParser(description="IEEE-CIS data validation")
+    parser.add_argument(
+        "--cleanup-raw",
+        action="store_true",
+        help=(
+            "Delete raw CSV files from data/raw/ after validation passes. "
+            "This frees ~1.5 GB of disk space. Irreversible."
+        ),
+    )
+    args = parser.parse_args()
+
     train_path = PROCESSED_DIR / "train_merged.parquet"
     if not train_path.exists():
         print("ERROR: data/processed/train_merged.parquet not found.")
@@ -152,4 +170,15 @@ if __name__ == "__main__":
         print("Validation passed.")
     except ValidationError as e:
         print(f"\nValidation FAILED: {e}")
+        print("Raw files were NOT deleted.")
         sys.exit(1)
+
+    # Only clean up raw files if validation succeeded
+    if args.cleanup_raw:
+        # Import here to avoid circular dependency if loader imports validation
+        from src.ingestion.loader import cleanup_raw
+
+        logger.info("Validation passed. Cleaning up raw files ...")
+        for split in ("train", "test"):
+            cleanup_raw(split)
+        print("Raw files deleted. Parquet files in data/processed/ are your source of truth.")

@@ -9,6 +9,7 @@ Not every transaction has identity data (left join on TransactionID).
 """
 
 import logging
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -85,6 +86,7 @@ def describe_dataset(df: pd.DataFrame) -> None:
     print(f"Memory usage:   {df.memory_usage(deep=True).sum() / 1e6:.1f} MB")
     print(f"{'='*50}\n")
 
+
 def reduce_memory_usage(df: pd.DataFrame) -> pd.DataFrame:
     """Downcast numeric types to reduce memory usage."""
     for col in df.columns:
@@ -115,11 +117,22 @@ def reduce_memory_usage(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 def convert_object_to_category(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert object columns to category dtype."""
-    for col in df.select_dtypes(include="str").columns:
-        df[col] = df[col].astype("category")
+    """Convert object columns with low cardinality to category dtype.
+
+    Note: select_dtypes(include='object') is the correct selector for
+    string-like columns in pandas. 'str' does not work as a dtype name.
+    We also guard against high-cardinality columns (e.g. free-text or IDs)
+    that would waste memory as categories.
+    """
+    for col in df.select_dtypes(include="object").columns:
+        n_unique = df[col].nunique(dropna=False)
+        # Only convert if cardinality is low relative to column size
+        if n_unique / len(df) < 0.50:
+            df[col] = df[col].astype("category")
     return df
+
 
 def save_processed(df: pd.DataFrame, split: str = "train") -> Path:
     """
@@ -145,6 +158,41 @@ def save_processed(df: pd.DataFrame, split: str = "train") -> Path:
     return output_path
 
 
+def cleanup_raw(split: str = "train") -> None:
+    """
+    Delete raw CSV files for a given split after successful processing.
+
+    Only call this after save_processed() AND validation have both succeeded.
+    The ZIP file (if present) is also removed.
+
+    Args:
+        split: 'train' or 'test'
+    """
+    targets = [
+        RAW_DIR / f"{split}_transaction.csv",
+        RAW_DIR / f"{split}_identity.csv",
+    ]
+    freed_mb = 0.0
+    for path in targets:
+        if path.exists():
+            size_mb = path.stat().st_size / 1e6
+            path.unlink()
+            freed_mb += size_mb
+            logger.info("Deleted %s (%.1f MB)", path.name, size_mb)
+        else:
+            logger.warning("cleanup_raw: %s not found, skipping.", path.name)
+
+    # Also clean up the competition ZIP if it was left behind
+    zip_path = RAW_DIR / "ieee-fraud-detection.zip"
+    if zip_path.exists():
+        size_mb = zip_path.stat().st_size / 1e6
+        zip_path.unlink()
+        freed_mb += size_mb
+        logger.info("Deleted %s (%.1f MB)", zip_path.name, size_mb)
+
+    logger.info("Total space freed: %.1f MB", freed_mb)
+
+
 def _check_files_exist(*paths: Path) -> None:
     for path in paths:
         if not path.exists():
@@ -157,16 +205,36 @@ def _check_files_exist(*paths: Path) -> None:
 
 
 if __name__ == "__main__":
+    import argparse
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s  %(levelname)s  %(message)s",
         datefmt="%H:%M:%S",
     )
 
+    parser = argparse.ArgumentParser(description="IEEE-CIS ingestion pipeline")
+    parser.add_argument(
+        "--cleanup-raw",
+        action="store_true",
+        help="Delete raw CSV files after successful processing (saves ~1.5 GB).",
+    )
+    args = parser.parse_args()
+
     for split in ("train", "test"):
         df = load_raw(split)
         describe_dataset(df)
         save_processed(df, split)
+
+    # Cleanup is deferred to after validation (called from validation.py).
+    # If you want to skip validation and clean up immediately, pass --cleanup-raw.
+    if args.cleanup_raw:
+        logger.warning(
+            "--cleanup-raw set: deleting raw files WITHOUT running validation. "
+            "Prefer running validation.py with --cleanup-raw instead."
+        )
+        for split in ("train", "test"):
+            cleanup_raw(split)
 
     print("Phase 1 -> ingestion complete.")
     print("Now run: python src/ingestion/validation.py")
