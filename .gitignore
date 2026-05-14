@@ -1,7 +1,8 @@
-# Data (use DVC for versioning)
+# Data
 data/raw/
+!data/raw/__init__.py
 data/processed/
-data/curated/
+!data/processed/__init__.py
 *.csv
 *.parquet
 *.feather
